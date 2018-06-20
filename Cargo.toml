@@ -1,0 +1,13 @@
+[package]
+name = "coffee-compass"
+version = "0.1.0"
+authors = ["David McGillicuddy <contact@djmcgill.co.uk>"]
+
+[dependencies]
+cortex-m = "~0.4"
+embedded-hal = "~0.2"
+panic-abort = "~0.1"
+
+[dependencies.atsamd21-hal]
+version = "~0.1"
+features = ["samd21g18a", "rt"]
