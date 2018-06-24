@@ -4,9 +4,9 @@ version = "0.1.0"
 authors = ["David McGillicuddy <contact@djmcgill.co.uk>"]
 
 [dependencies]
-cortex-m = "~0.4"
+cortex-m = "~0.5.2"
 embedded-hal = "~0.2"
-panic-abort = "~0.1"
+panic-abort = "~0.2"
 
 [dependencies.atsamd21-hal]
 version = "~0.1"
