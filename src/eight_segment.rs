@@ -14,16 +14,22 @@ pub struct EightSegment<'a> {
 impl<'a> EightSegment<'a> {
     pub fn display(&mut self, count: u8, dp: bool) {
         let (seg_a_on, seg_f_on, seg_b_on, seg_g_on, seg_e_on, seg_c_on, seg_d_on) = match count {
-            0 => (true, true, true, false, true, true, true),
-            1 => (false, false, true, false, false, true, false),
-            2 => (true, false, true, true, true, false, true),
-            3 => (true, false,  true, true, false, true, true),
-            4 => (false, true, true, true, false, true, false),
-            5 => (true, true, false, true, false, true, true),
-            6 => (true, true, false, true, true, true, true),
-            7 => (true, false, true, false, false, true, false),
-            8 => (true, true, true, true, true, true, true),
-            9 => (true, true, true, true, false, true, false),
+            0x0 => (true, true, true, false, true, true, true),
+            0x1 => (false, false, true, false, false, true, false),
+            0x2 => (true, false, true, true, true, false, true),
+            0x3 => (true, false,  true, true, false, true, true),
+            0x4 => (false, true, true, true, false, true, false),
+            0x5 => (true, true, false, true, false, true, true),
+            0x6 => (true, true, false, true, true, true, true),
+            0x7 => (true, false, true, false, false, true, false),
+            0x8 => (true, true, true, true, true, true, true),
+            0x9 => (true, true, true, true, false, true, false),
+            0xA => (true, true, true, false, true, true, false),
+            0xB => (false, true, false, true, true, true, true),
+            0xC => (false, false, false, true, true, false, true),
+            0xD => (false, false, true, true, true, true, true),
+            0xE => (true, true, false, true, true, false, true),
+            0xF => (true, true, false, true, true, false, false),
             _ => (true, true, true, true, true, true, true),
         };
 
