@@ -12,6 +12,17 @@ pub struct EightSegment<'a> {
 }
 
 impl<'a> EightSegment<'a> {
+pub fn blank(&mut self) {
+    self.seg_a.set_high();
+    self.seg_b.set_high();
+    self.seg_c.set_high();
+    self.seg_d.set_high();
+    self.seg_e.set_high();
+    self.seg_f.set_high();
+    self.seg_g.set_high();
+    self.seg_p.set_high();
+}
+
     pub fn display(&mut self, count: u8, dp: bool) {
         let (seg_a_on, seg_f_on, seg_b_on, seg_g_on, seg_e_on, seg_c_on, seg_d_on) = match count {
             0x0 => (true, true, true, false, true, true, true),
