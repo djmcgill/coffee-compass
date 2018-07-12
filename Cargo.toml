@@ -7,7 +7,10 @@ authors = ["David McGillicuddy <contact@djmcgill.co.uk>"]
 cortex-m = "~0.5.2"
 embedded-hal = "~0.2"
 panic-abort = "~0.2"
+nb = "~0.1"
 
 [dependencies.atsamd21-hal]
 version = "~0.1"
+git = "https://github.com/zklapow/atsamd21-rs"
+branch = "sercom-usart"
 features = ["samd21g18a", "rt"]
