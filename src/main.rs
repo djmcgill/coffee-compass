@@ -15,13 +15,18 @@ use hal::delay::Delay;
 use hal::atsamd21g18a::{CorePeripherals, Peripherals};
 use hal::sercom::*;
 
+extern crate libm;
+
+use core::f32::consts::PI;
+use libm::F32Ext;
+
 mod eight_segment;
 use eight_segment::EightSegment;
 
 const MPU9250_ADDRESS: u8 = 0x68;
-const WHOAMI_REGISTER: u8 = 117;
+const MPU_WHOAMI_REGISTER: u8 = 117;
 const MAG_ADDRESS: u8 = 0x0C;
-const MAG_DEVICE_ID: u8 = 0x0;
+const MAG_WHOAMI_REGISTER: u8 = 0x0;
 
 fn main() {
     let mut peripherals = Peripherals::take().unwrap();
@@ -54,29 +59,26 @@ fn main() {
         &mut peripherals.PM,
         UART5Pinout::Rx3Tx2 {rx: rx_pin, tx: tx_pin}));
 
-    serial.0.bwrite_all(b"pre-starting\n").unwrap();
-    serial.write_str("starting\n").unwrap();
     let mut builtin_led = pins.pb8.into_open_drain_output(&mut pins.port);
-
     let mut led_state = true;
     let mut delay = Delay::new(core.SYST, &mut clocks);
+    serial.write_str("Initialised\n").unwrap();
 
     let mut data = [0u8];
-    serial.write_str("reading\n").unwrap();
-    let res = i2c.write_read(MAG_ADDRESS, &[MAG_DEVICE_ID], &mut data);
-    serial.write_fmt(format_args!("WHOAMI {:?}\n", res)).unwrap();
-    serial.write_fmt(format_args!("done printing: {:?}\n", data[0])).unwrap();
-//    let foo = format_args!("{}", data[0]);
-//    serial.bwrite()
+    i2c.write_read(MPU9250_ADDRESS, &[MPU_WHOAMI_REGISTER], &mut data).unwrap();
+    serial.write_fmt(format_args!("MPU WHOAMI: {:X}\n", data[0])).unwrap();
 
-    // Set by pass mode for the magnetometers
-    //  I2CwriteByte(MPU9250_ADDRESS,0x37,0x02);
-//    i2c.write(MPU9250_ADDRESS, &[0x37, 0x02]).unwrap();
+    // Set bypass mode for the magnetometers
+    i2c.write(MPU9250_ADDRESS, &[0x37, 0x02]).unwrap();
+
+    let mut data2 = [0u8];
+    i2c.write_read(MAG_ADDRESS, &[MAG_WHOAMI_REGISTER], &mut data2).unwrap();
+    serial.write_fmt(format_args!("MAG WHOAMI: {:X}\n", data2[0])).unwrap();
 
     // Request continuous magnetometer measurements in 16 bits
     //  I2CwriteByte(MAG_ADDRESS,0x0A,0x16);
-//    i2c.write(MAG_ADDRESS, &[0x0A, 0x16]).unwrap();
-
+    i2c.write(MAG_ADDRESS, &[0x0A, 0x16]).unwrap();
+    serial.write_str("starting loop\n").unwrap();
     loop {
         // Read register Status 1 and wait for the DRDY: Data Ready
         //   uint8_t ST1;
@@ -85,28 +87,38 @@ fn main() {
         //     I2Cread(MAG_ADDRESS,0x02,1,&ST1);
         //   }
         //   while (!(ST1&0x01));
-//        let mut loop_data = [0u8];
-//        i2c.write_read(MAG_ADDRESS, &[0x02], &mut loop_data).unwrap();
-//        while (loop_data[0] & 0x01) == 0 {
+        let mut loop_data = [0u8];
+        i2c.write_read(MAG_ADDRESS, &[0x02], &mut loop_data).unwrap();
+        while (loop_data[0] & 0x01) == 0 {
 //             TODO: slight delay, or skip measurements?
-//            i2c.write_read(MAG_ADDRESS, &[0x02], &mut loop_data).unwrap();
-//        }
+            i2c.write_read(MAG_ADDRESS, &[0x02], &mut loop_data).unwrap();
+        }
 
 
         // Read magnetometer data  
         //   uint8_t Mag[7];  
         //   I2Cread(MAG_ADDRESS,0x03,7,Mag);
-//        let mut mag_data = [0x8; 7];
-//        i2c.write_read(MAG_ADDRESS, &[0x03], &mut mag_data).unwrap();
+        let mut mag_data = [0x8; 7];
+        i2c.write_read(MAG_ADDRESS, &[0x03], &mut mag_data).unwrap();
+        serial.write_fmt(format_args!("RAW DATA: {:?}\n", mag_data)).unwrap();
 
         // Create 16 bits values from 8 bits data
         //   int16_t mx=-(Mag[3]<<8 | Mag[2]);
         //   int16_t my=-(Mag[1]<<8 | Mag[0]);
         //   int16_t mz=-(Mag[5]<<8 | Mag[4]);
-//        let mx: i16 = - ((mag_data[3] as i16) << 8 | mag_data[2] as i16);
-//        let my: i16 = - ((mag_data[1] as i16) << 8 | mag_data[0] as i16);
-//        let mz: i16 = - ((mag_data[5] as i16) << 8 | mag_data[4] as i16);
-  
+        let mx: i16 = - ((mag_data[3] as i16) << 8 | mag_data[2] as i16);
+        let my: i16 = - ((mag_data[1] as i16) << 8 | mag_data[0] as i16);
+        let mz: i16 = - ((mag_data[5] as i16) << 8 | mag_data[4] as i16);
+
+        let x = -((mx+200) as f32);
+        let y = -((my-70) as f32);
+        let z = (mz-700) as f32;
+
+        // angle from north, clockwise
+        let deg = y.atan2(x) * (180.0 / PI) + 180.0;
+        serial.write_fmt(format_args!("{}\t{}\t{}\t{}\n", x, y, z, deg)).unwrap();
+
+
 //   Serial.print (mx+200,DEC); 
 //   Serial.print ("\t");
 //   Serial.print (my-70,DEC);
