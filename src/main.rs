@@ -1,32 +1,33 @@
 #![no_std]
+#![feature(arbitrary_self_types, never_type, generators, generator_trait)]
 
-extern crate atsamd21_hal as hal;
 extern crate panic_abort;
 
-#[macro_use(block)]
-extern crate nb;
+use embedded_hal::blocking::i2c::Write as I2CWrite;
+use embedded_hal::blocking::i2c::WriteRead as I2CWriteRead;
+use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::digital::OutputPin;
+use atsamd21_hal::prelude::*;
+use core::fmt::Write as FmtWrite;
 
-use hal::hal::blocking::i2c::WriteRead;
-use hal::prelude::*;
-use core::fmt::Write;
+use atsamd21_hal::clock::GenericClockController;
+use atsamd21_hal::delay::Delay;
+use atsamd21_hal::atsamd21g18a::{CorePeripherals, Peripherals};
+use atsamd21_hal::sercom::*;
 
-use hal::clock::GenericClockController;
-use hal::delay::Delay;
-use hal::atsamd21g18a::{CorePeripherals, Peripherals};
-use hal::sercom::*;
 
-extern crate libm;
 
 use core::f32::consts::PI;
 use libm::F32Ext;
-
-mod eight_segment;
-use eight_segment::EightSegment;
 
 const MPU9250_ADDRESS: u8 = 0x68;
 const MPU_WHOAMI_REGISTER: u8 = 117;
 const MAG_ADDRESS: u8 = 0x0C;
 const MAG_WHOAMI_REGISTER: u8 = 0x0;
+
+mod stepper;
+mod consts;
+use crate::consts::*;
 
 fn main() {
     let mut peripherals = Peripherals::take().unwrap();
@@ -51,18 +52,27 @@ fn main() {
 
     let rx_pin = pins.pb23.into_pull_down_input(&mut pins.port).into_pad(&mut pins.port);
     let tx_pin = pins.pb22.into_push_pull_output(&mut pins.port).into_pad(&mut pins.port);
-    let mut serial = BlockingWrite(UART5::new(
+    let mut serial = UART5::new(
         &clocks.sercom5_core(&gclk0).unwrap(),
         9600.hz(),
         peripherals.SERCOM5,
         &mut core.NVIC,
         &mut peripherals.PM,
-        UART5Pinout::Rx3Tx2 {rx: rx_pin, tx: tx_pin}));
+        UART5Pinout::Rx3Tx2 {rx: rx_pin, tx: tx_pin});
+
+    let mut motor_step = pins.pa20.into_open_drain_output(&mut pins.port);
+    let mut motor_dir = pins.pa21.into_open_drain_output(&mut pins.port);
+
 
     let mut builtin_led = pins.pb8.into_open_drain_output(&mut pins.port);
     let mut led_state = true;
     let mut delay = Delay::new(core.SYST, &mut clocks);
     serial.write_str("Initialised\n").unwrap();
+
+    motor_dir.set_low();
+    let mut motor_offset = 0;
+
+    serial.write_str("Motor done\n").unwrap();
 
     let mut data = [0u8];
     i2c.write_read(MPU9250_ADDRESS, &[MPU_WHOAMI_REGISTER], &mut data).unwrap();
@@ -118,8 +128,15 @@ fn main() {
         let deg = y.atan2(x) * (180.0 / PI) + 180.0;
         serial.write_fmt(format_args!("{}\t{}\t{}\t{}\n", x, y, z, deg)).unwrap();
 
+        let rad_angle = (HOME_X - DEST_X).atan2(HOME_Y - DEST_Y);
+        let deg_angle = rad_angle * (180.0 / PI) + 180.0;
+        let mut angle = deg - deg_angle;
 
-//   Serial.print (mx+200,DEC); 
+        while angle < 0.0 {angle += 360.0}
+        while angle > 360.0 {angle -= 360.0}
+        serial.write_fmt(format_args!("{}\n", angle)).unwrap();
+
+//   Serial.print (mx+200,DEC);
 //   Serial.print ("\t");
 //   Serial.print (my-70,DEC);
 //   Serial.print ("\t");
@@ -146,23 +163,6 @@ fn main() {
 //        } else {
 //            eight_seg_count = 0;
 //        }
-//        serial.write(b"foo2\n").unwrap();
-
-//        serial.bwrite_all(b"Hello, world!").unwrap();
         delay.delay_ms(200u8);
-        delay.delay_ms(200u8);
-        delay.delay_ms(200u8);
-        delay.delay_ms(200u8);
-        delay.delay_ms(200u8);
-    }
-}
-
-struct BlockingWrite<W>(W) where W: hal::hal::blocking::serial::Write<u8>;
-impl<W: hal::hal::blocking::serial::Write<u8>> core::fmt::Write for BlockingWrite<W> {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        match self.0.bwrite_all(s.as_bytes()) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(core::fmt::Error),
-        }
     }
 }
