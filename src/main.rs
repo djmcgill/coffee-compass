@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(arbitrary_self_types, never_type, generators, generator_trait)]
+#![feature(never_type)]
 
 extern crate panic_abort;
 
@@ -8,6 +8,7 @@ use embedded_hal::blocking::i2c::WriteRead as I2CWriteRead;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::digital::OutputPin;
 use atsamd21_hal::prelude::*;
+use atsamd21_hal::timer::*;
 use core::fmt::Write as FmtWrite;
 
 use atsamd21_hal::clock::GenericClockController;
@@ -62,14 +63,24 @@ fn main() {
 
     let mut motor_step = pins.pa20.into_open_drain_output(&mut pins.port);
     let mut motor_dir = pins.pa21.into_open_drain_output(&mut pins.port);
+    motor_dir.set_low();
+    motor_step.set_low();
 
+    let mut stepper = stepper::Stepper {
+        current_position: 0,
+        step: &mut motor_step,
+        step_high: false,
+        dir: &mut motor_dir,
+        dir_high: false,
+    };
 
+    let mut count_down: TimerCounter3 = panic!();
+    let mut tracker = stepper.track_position(&mut count_down, 0); // FIXME
     let mut builtin_led = pins.pb8.into_open_drain_output(&mut pins.port);
     let mut led_state = true;
     let mut delay = Delay::new(core.SYST, &mut clocks);
     serial.write_str("Initialised\n").unwrap();
 
-    motor_dir.set_low();
     let mut motor_offset = 0;
 
     serial.write_str("Motor done\n").unwrap();
@@ -89,6 +100,9 @@ fn main() {
     //  I2CwriteByte(MAG_ADDRESS,0x0A,0x16);
     i2c.write(MAG_ADDRESS, &[0x0A, 0x16]).unwrap();
     serial.write_str("starting loop\n").unwrap();
+
+//    let tracker =
+
     loop {
         // Read register Status 1 and wait for the DRDY: Data Ready
         //   uint8_t ST1;
@@ -103,6 +117,9 @@ fn main() {
 //             TODO: slight delay, or skip measurements?
             i2c.write_read(MAG_ADDRESS, &[0x02], &mut loop_data).unwrap();
         }
+
+        tracker.set_desired_position(100);
+        let _ = tracker.poll();
 
 
         // Read magnetometer data  

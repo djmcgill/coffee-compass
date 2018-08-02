@@ -1,29 +1,35 @@
 use embedded_hal::digital::OutputPin;
 use atsamd21_hal::hal::timer::CountDown;
-use atsamd21_hal::hal::prelude::*;
 use atsamd21_hal::time::{Hertz, U32Ext};
 use nb::*;
-use core::ops::{Generator, GeneratorState};
 
 const MOTOR_REVOLUTION: i32 = 513;
+const MOTOR_CLOCKWISE_DIR: bool = true;
 
 pub struct Stepper<'a> {
-    current_position: i32,
-    step: &'a mut OutputPin,
-    dir: &'a mut OutputPin,
+    pub current_position: i32,
+    pub step: &'a mut OutputPin,
+    pub step_high: bool,
+    pub dir: &'a mut OutputPin,
+    pub dir_high: bool,
 }
 
-struct MoveStepsGenerator<'a: 'c, 'b, 'c, B: 'b + CountDown, P: Into<B::Time> + Clone> {
-    remaining_steps: u32,
+pub struct MoveStepsGenerator<'a: 'c, 'b, 'c, B: 'b + CountDown, P: Into<B::Time> + Clone> {
+    desired_position: i32,
     stepper: &'c mut Stepper<'a>,
     timer: &'b mut B,
-    pin_low: bool,
     waiting: bool,
     delay: P,
 }
 
 impl<'a, 'b, 'c: 'a, T: CountDown, P: Into<T::Time> + Clone> MoveStepsGenerator<'a, 'b, 'c, T, P> {
-    fn poll(&mut self) -> Result<(), !> {
+    pub fn set_desired_position(&mut self, new_desired_position: i32) {
+        debug_assert!(new_desired_position >= 0);
+        debug_assert!(new_desired_position < MOTOR_REVOLUTION);
+        self.desired_position = new_desired_position;
+    }
+
+    pub fn poll(&mut self) -> Result<(), !> {
         // Make sure we're done waiting (by yielding)
         if self.waiting {
             match self.timer.wait() {
@@ -31,43 +37,82 @@ impl<'a, 'b, 'c: 'a, T: CountDown, P: Into<T::Time> + Clone> MoveStepsGenerator<
                 Err(Error::WouldBlock) => return Err(Error::WouldBlock),
                 Err(Error::Other(_)) => unreachable!(), // Countdown::wait has error type `!`
             }
+            // If we get here then we're done waiting
+            self.waiting = false;
         }
-        // If we get here then we're done waiting
-        self.waiting = false;
+        let desired_steps = self.desired_position - self.stepper.current_position;
+        if desired_steps == 0 { return Ok(()) }
 
-        if self.remaining_steps == 0 {
-            Ok(())
-        } else {
-            if self.pin_low {
-                self.stepper.step.set_high();
-                self.remaining_steps -= 1;
-                self.timer.start(self.delay.clone());
-                Err(Error::WouldBlock)
-            } else { // self.pin_high
-                self.stepper.step.set_low();
-                self.timer.start(self.delay.clone());
-                Err(Error::WouldBlock)
+        // We need to take at least 1 step, and are ready to.
+
+        // Set the direction
+        self.stepper.ensure_dir((desired_steps > 0) ^ !MOTOR_CLOCKWISE_DIR);
+
+        // Flip the step pin
+        self.stepper.toggle_step();
+        self.timer.start(self.delay.clone());
+        self.waiting = true;
+        if self.stepper.step_high { // the motor has moved
+            if self.stepper.dir_high {
+                self.stepper.increment_position();
+            } else {
+                self.stepper.decrement_position();
             }
         }
+        Err(Error::WouldBlock)
     }
 }
 
 impl<'a> Stepper<'a> {
-    pub fn new(step: &'a mut OutputPin, dir: &'a mut OutputPin) -> Self {
-        Stepper {
-            current_position: 0,
-            step,
-            dir,
+    fn toggle_step(&mut self) {
+        if self.step_high {
+            self.step.set_low();
+        } else {
+            self.step.set_high();
+        }
+        self.step_high = !self.step_high;
+    }
+
+    fn ensure_dir(&mut self, dir: bool) {
+        if dir && !self.dir_high {
+            self.dir.set_high();
+            self.dir_high = true;
+        } else if !dir && self.dir_high {
+            self.dir.set_low();
+            self.dir_high = false;
         }
     }
 
-    fn move_steps<'b, 'c, T: CountDown<Time=Hertz>>(&'c mut self, timer: &'b mut T, steps: u32)
+    pub fn new(step: &'a mut OutputPin, step_high: bool, dir: &'a mut OutputPin, dir_high: bool, initial_position: i32) -> Self {
+        Stepper {
+            current_position: initial_position,
+            step,
+            step_high,
+            dir,
+            dir_high,
+        }
+    }
+
+    pub fn increment_position(&mut self) {
+        self.current_position += 1;
+        if self.current_position >= MOTOR_REVOLUTION {
+            self.current_position -= MOTOR_REVOLUTION;
+        }
+    }
+
+    pub fn decrement_position(&mut self) {
+        self.current_position -= 1;
+        if self.current_position < 0 {
+            self.current_position += MOTOR_REVOLUTION;
+        }
+    }
+
+    pub fn track_position<'b, 'c, T: CountDown<Time=Hertz>>(&'c mut self, timer: &'b mut T, desired_position: i32)
         -> MoveStepsGenerator<'a, 'b, 'c, T, Hertz> {
         MoveStepsGenerator {
+            desired_position,
             stepper: self,
             timer,
-            remaining_steps: steps,
-            pin_low: false,
             delay: 1000.hz(),
             waiting: false,
         }
