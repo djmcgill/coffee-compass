@@ -1,22 +1,18 @@
 #![no_std]
+#![no_main]
 #![feature(never_type)]
 
-extern crate panic_abort;
+use arduino_mkrzero::entry;
 
-use embedded_hal::blocking::i2c::Write as I2CWrite;
-use embedded_hal::blocking::i2c::WriteRead as I2CWriteRead;
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::digital::OutputPin;
-use atsamd21_hal::prelude::*;
-use atsamd21_hal::timer::*;
-use core::fmt::Write as FmtWrite;
+use arduino_mkrzero::prelude::*;
+use arduino_mkrzero::timer::*;
+use arduino_mkrzero::sercom::*;
+use core::fmt::Write;
 
-use atsamd21_hal::clock::GenericClockController;
-use atsamd21_hal::delay::Delay;
-use atsamd21_hal::atsamd21g18a::{CorePeripherals, Peripherals};
-use atsamd21_hal::sercom::*;
-
-
+use arduino_mkrzero::clock::GenericClockController;
+use arduino_mkrzero::delay::Delay;
+use arduino_mkrzero::atsamd21g18a::{CorePeripherals, Peripherals};
 
 use core::f32::consts::PI;
 use libm::F32Ext;
@@ -30,7 +26,8 @@ mod stepper;
 mod consts;
 use crate::consts::*;
 
-fn main() {
+entry!(main);
+fn main() -> ! {
     let mut peripherals = Peripherals::take().unwrap();
     let mut core = CorePeripherals::take().unwrap();
     let mut clocks = GenericClockController::new(
@@ -40,19 +37,19 @@ fn main() {
         &mut peripherals.NVMCTRL,
     );
 
-    let mut pins = peripherals.PORT.split();
+    let mut pins = arduino_mkrzero::pins(peripherals.PORT);
     let gclk0 = clocks.gclk0().clone();
     let mut i2c = I2CMaster0::new(
         &clocks.sercom0_core(&gclk0).unwrap(),
         400.khz(),
         peripherals.SERCOM0,
         &mut peripherals.PM,
-        pins.pa8.into_pad(&mut pins.port),
-        pins.pa9.into_pad(&mut pins.port),
+        pins.sda.into_pad(&mut pins.port),
+        pins.scl.into_pad(&mut pins.port),
     );
 
-    let rx_pin = pins.pb23.into_pull_down_input(&mut pins.port).into_pad(&mut pins.port);
-    let tx_pin = pins.pb22.into_push_pull_output(&mut pins.port).into_pad(&mut pins.port);
+    let rx_pin = pins.rx.into_pull_down_input(&mut pins.port).into_pad(&mut pins.port);
+    let tx_pin = pins.tx.into_push_pull_output(&mut pins.port).into_pad(&mut pins.port);
     let mut serial = UART5::new(
         &clocks.sercom5_core(&gclk0).unwrap(),
         9600.hz(),
@@ -61,8 +58,8 @@ fn main() {
         &mut peripherals.PM,
         UART5Pinout::Rx3Tx2 {rx: rx_pin, tx: tx_pin});
 
-    let mut motor_step = pins.pa20.into_open_drain_output(&mut pins.port);
-    let mut motor_dir = pins.pa21.into_open_drain_output(&mut pins.port);
+    let mut motor_step = pins.d6.into_open_drain_output(&mut pins.port);
+    let mut motor_dir = pins.d7.into_open_drain_output(&mut pins.port);
     motor_dir.set_low();
     motor_step.set_low();
 
@@ -76,7 +73,7 @@ fn main() {
 
     let mut count_down: TimerCounter3 = panic!();
     let mut tracker = stepper.track_position(&mut count_down, 0); // FIXME
-    let mut builtin_led = pins.pb8.into_open_drain_output(&mut pins.port);
+    let mut builtin_led = pins.led_builtin.into_open_drain_output(&mut pins.port);
     let mut led_state = true;
     let mut delay = Delay::new(core.SYST, &mut clocks);
     serial.write_str("Initialised\n").unwrap();

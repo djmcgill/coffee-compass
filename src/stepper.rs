@@ -1,6 +1,6 @@
 use embedded_hal::digital::OutputPin;
-use atsamd21_hal::hal::timer::CountDown;
-use atsamd21_hal::time::{Hertz, U32Ext};
+use embedded_hal::timer::CountDown;
+use arduino_mkrzero::time::{Hertz, U32Ext};
 use nb::*;
 
 const MOTOR_REVOLUTION: i32 = 513;
